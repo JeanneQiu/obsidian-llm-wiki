@@ -26,6 +26,42 @@ function createWikiEngineHarness(options: Parameters<typeof originalHarness>[0])
 }
 
 describe('hierarchical study notes', () => {
+  it('retries once when the writer omits the required learning sections', async () => {
+    const h=createWikiEngineHarness({settings:{hierarchicalNotes:true},files:{'learn.md':'技术资料'},llmResponses:[JSON.stringify({paths:['学习/笔记.md']}),JSON.stringify({notes:[{path:'学习/笔记.md',content:'# 笔记\n'+ '普通正文但缺少摘要和知识细节章节。'.repeat(4)}]}),JSON.stringify({notes:[{path:'学习/笔记.md',content:'# 笔记\n\n## 摘要\n学习技术原理。\n\n## 知识细节\n'+'保留有依据的技术知识并记录原始资料来源。'.repeat(4)}]})]});
+    await h.engine.ingestSource(h.app.vault.getAbstractFileByPath('learn.md') as TFile);
+    expect(h.llmRequests).toHaveLength(3);
+    expect(h.files.get('wiki/学习/笔记.md')).toContain('## 知识细节');
+  });
+  it.each(['markdown','text','srt','vtt','json','py'])('reads %s as UTF-8 text without MinerU', async extension => {
+    const name='learn.'+extension;
+    const h=createWikiEngineHarness({settings:{hierarchicalNotes:true},files:{[name]:'# 原文\n手工粘贴的文字稿与技术细节'},llmResponses:[JSON.stringify({paths:['学习/笔记.md']}),JSON.stringify({notes:[{path:'学习/笔记.md',content:'# 学习\n\n## 摘要\n整理文字稿。\n\n## 知识细节\n根据用户粘贴的技术内容整理，保留原始材料中有依据的细节。'}]})]});
+    await h.engine.ingestSource(h.app.vault.getAbstractFileByPath(name) as TFile);
+    expect(h.llmRequests[0].messages[0].content).toContain('手工粘贴');
+    expect(h.files.get('wiki/学习/笔记.md')).toContain('文字稿');
+  });
+
+  it('retains accepted web text and extraction decisions through the real ingest entry', async () => {
+    const h=createWikiEngineHarness({settings:{hierarchicalNotes:true,tavilyExtractEnabled:true},files:{'learn.md':'https://example.com/guide'},llmResponses:[JSON.stringify({keep:true,reason:'技术教程'}),JSON.stringify({paths:['学习/网页.md']}),JSON.stringify({notes:[{path:'学习/网页.md',content:'# 网页\n\n## 摘要\n技术教程。\n\n## 知识细节\n通过阅读网页正文学习技术原理，并保留原文来源链接以便后续核实。'}]})]});
+    Object.assign(h.app,{secretStorage:{getSecret:()=> 'test-key'}});
+    vi.mocked(requestUrl).mockResolvedValueOnce({status:200,headers:{},text:JSON.stringify({results:[{url:'https://example.com/guide',raw_content:'# Guide\nActual technical webpage content'}],failed_results:[]}),json:{},arrayBuffer:new ArrayBuffer(0)});
+    await h.engine.ingestSource(h.app.vault.getAbstractFileByPath('learn.md') as TFile);
+    expect(h.llmRequests[0].task).toBe('hierarchy-web-assess');
+    expect(h.llmRequests[1].messages[0].content).toContain('Actual technical webpage content');
+    const raw=[...h.files.entries()].find(([path])=>path.startsWith('wiki/原始资料/learn-'))?.[1];
+    expect(raw).toContain('https://example.com/guide');
+    expect(raw).toContain('网页提取记录');
+    expect(raw).not.toContain('test-key');
+  });
+
+  it('does not turn a rejected link-only source into invented notes', async () => {
+    const h=createWikiEngineHarness({settings:{hierarchicalNotes:true,tavilyExtractEnabled:true},files:{'learn.md':'https://example.com/login'},llmResponses:[JSON.stringify({keep:false,reason:'登录页'})]});
+    Object.assign(h.app,{secretStorage:{getSecret:()=> 'test-key'}});
+    vi.mocked(requestUrl).mockResolvedValueOnce({status:200,headers:{},text:JSON.stringify({results:[{url:'https://example.com/login',raw_content:'Sign in'}],failed_results:[]}),json:{},arrayBuffer:new ArrayBuffer(0)});
+    await expect(h.engine.ingestSource(h.app.vault.getAbstractFileByPath('learn.md') as TFile)).rejects.toThrow('没有可保留');
+    expect([...h.files.keys()].some(path=>path.startsWith('wiki/学习'))).toBe(false);
+    expect(h.llmRequests).toHaveLength(1);
+  });
+
   it('renders only direct children as a plain directory', () => {
     const result = renderDirectoryIndex('Agent', ['Agent/Memory/index.md', 'Agent/Overview.md', 'Agent/index.md', 'Agent/Memory/Long.md']);
     expect(result).toBe('# Agent\n\n- [Memory](<Memory/index.md>)\n- [Overview](<Overview.md>)\n');
@@ -108,16 +144,24 @@ describe('hierarchical study notes', () => {
       return Object.assign(pending, {text:pending.then(r=>r.text),json:pending.then(r=>r.json),arrayBuffer:pending.then(r=>r.arrayBuffer)});
     });
     await preloadLLMClientModules();
-    const settings = {...DEFAULT_SETTINGS, provider:'custom', apiKey:'magpie-local', baseUrl:'http://127.0.0.1:3425/v1', model:'deepseek/deepseek-flash', hierarchicalNotes:true};
+    const settings = {...DEFAULT_SETTINGS, provider:'custom', apiKey:'magpie-local', baseUrl:'http://127.0.0.1:3425/v1', model:'deepseek/deepseek-flash', hierarchicalNotes:true,tavilyExtractEnabled:!!process.env.JEAN_TAVILY_KEY};
     const client = createLLMClient(settings);
     const source='# RAG 学习记录\n\nRAG 先解析资料、分块并建立索引。回答时检索相关片段，将其与问题交给模型生成回答。混合检索结合关键词匹配和向量检索：前者适合精确术语，后者适合语义匹配。重排对召回候选再次排序。评估需要分别检查相关资料是否被检索到、回答是否正确引用来源。这是配置测试的合成笔记，不是论文结论。';
-    const h=createWikiEngineHarness({settings,files:{'学习资料.md':source}});
+    const input=process.env.JEAN_TAVILY_KEY ? '# Tavily 网页学习验证\n\nhttps://docs.tavily.com/documentation/about' : source;
+    const h=createWikiEngineHarness({settings,files:{'学习资料.md':input}});
+    if (process.env.JEAN_TAVILY_KEY) Object.assign(h.app,{secretStorage:{getSecret:()=>process.env.JEAN_TAVILY_KEY}});
     Object.assign(h.engine, {getLLMClient:()=>client});
     await h.engine.ingestSource(h.app.vault.getAbstractFileByPath('学习资料.md') as TFile);
     expect(h.reports[0].success).toBe(true);
     expect(h.reports[0].createdPages.length).toBeGreaterThan(0);
     for (const path of h.reports[0].createdPages) expect(h.files.get(path)).toContain('知识细节');
     expect(h.files.get('wiki/log.md')).toContain('学习资料');
+    if (process.env.JEAN_TAVILY_KEY) {
+      const raw=[...h.files.entries()].find(([path])=>path.startsWith('wiki/原始资料/学习资料-'))?.[1] ?? '';
+      expect(raw).toContain('## 网页来源：https://docs.tavily.com/documentation/about');
+      expect(raw.length).toBeGreaterThan(1000);
+      expect(raw).not.toContain(process.env.JEAN_TAVILY_KEY);
+    }
     if (process.env.JEAN_WIKI_LIVE_OUTPUT) writeFileSync(process.env.JEAN_WIKI_LIVE_OUTPUT,JSON.stringify(Object.fromEntries(h.files),null,2));
   },180000);
 });

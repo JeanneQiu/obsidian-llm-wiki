@@ -21,7 +21,7 @@ import type { LLMWikiSettings } from '../../types';
 import { getText } from '../../core/i18n';
 import { buildFolderTree, type TreeNode } from '../../core/build-folder-tree';
 import type { IngestQueue } from '../../core/ingest-queue';
-import { COMPATIBLE_SOURCE_EXTENSIONS } from '../../constants';
+import { getSourceExtensions } from '../../core/source-formats';
 import { isExcludedFromSourcePicker } from '../../core/folder-scope';
 import { slugify } from '../../core/slug';
 import { pageBelongsToNote, noteHasDrifted, type IngestDiskState } from '../../core/ingest-state';
@@ -127,7 +127,7 @@ export class MultiFileSuggestModal extends Modal {
     // updated in place — re-rendering on every queue change would
     // close every <details> and force the user to re-expand
     // folders (the bug v2 fixes). v1.25.0 PR2: include PDFs.
-    const compatibleExts: readonly string[] = COMPATIBLE_SOURCE_EXTENSIONS;
+    const compatibleExts = getSourceExtensions(this.settings);
     const available = this.app.vault.getFiles()
       .filter(f => !isExcludedFromSourcePicker(f.path, this.wikiFolder, this.app.vault.configDir))
       .filter(f => compatibleExts.includes(f.extension.toLowerCase()))

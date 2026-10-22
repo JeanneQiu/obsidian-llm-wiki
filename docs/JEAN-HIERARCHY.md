@@ -9,7 +9,39 @@
 PDF、图片和 Office 文件继续走原插件的文档转换后端；MinerU Token 保存在原有 SecretStorage 槽位。
 模型仍在原设置中选择，当前使用 Magpie 的 `deepseek/deepseek-flash`。
 
+资料可放在 Obsidian 库内任意位置，无需放入收件箱。选择器会排除生成的 Wiki 和配置目录。
+单文件、多文件和文件夹摄入使用同一格式列表：
+
+- 直接读取 UTF-8 文本：MD/Markdown、TXT/Text、SRT/VTT 字幕、CSV/TSV、JSON/JSONL、YAML/TOML、XML/HTML、RST/AsciiDoc/TeX、日志和常见源代码文件。
+- MinerU 在线 API：PDF、DOC/DOCX、PPT/PPTX、XLS/XLSX、PNG/JPG/JPEG/JP2/WEBP/GIF/BMP。
+- 音视频：第一版粘贴文字稿，支持 TXT、MD、SRT、VTT；不自动下载视频或提取字幕。
+
+上述是当前在线 API 接入范围，不等于 MinerU 开源版 4.0 的全部格式。
+未接入本地 MinerU 4.0，因此 RTF、ODT、EPUB、OFD 等不列入支持范围。
+单个代码文件可整理；完整 Git 仓库拉取与跨文件代码理解尚未实现。
+新增格式适用于手动摄入；原自动监听仍只监听 Markdown。
+
+## 网页链接
+
+在设置底部开启“摄入链接网页正文（Tavily）”，填入 Tavily API key，再保存设置。
+Key 只写入 Obsidian SecretStorage，不进入源码、data.json 或笔记。
+笔记里可只写一个公开网页链接，也可混写自己的文字和链接。
+摄入时调用 Tavily Extract 获取完整 Markdown，再由当前 LLM 判断是否有实质内容。
+判断阶段读取正文前 16,000 字符；保留时全文进入后续分块整理和原始资料归档。
+登录页、报错页、纯导航或广告页跳过；仅链接且没有可保留正文时停止，避免生成无依据笔记。
+归档保留 URL、接受的全文和判断记录，知识笔记引用这份归档。
+
+只获取这份资料中直接提供的链接，不递归抓取网页中的链接。
+代码块、图片、音视频链接、本机和内网 IP 不提交给 Tavily；YouTube/Bilibili 链接也跳过。
+每份最多 20 个网页，提取正文合计最多 120,000 字符。超限会提示拆分，不静默截掉正文。
+任一网页提取失败或结果不完整会停止本轮，修正链接后重试。
+取消会立即释放摄入状态，底层 Obsidian requestUrl 请求可能继续完成，其结果会丢弃。
+文件夹批次按本地文件变化判断是否跳过；需要刷新远端网页时使用“摄入当前文件”主动重摄入。
+
+## 知识整理
+
 模型分两步工作：先根据已有知识页和目录规划主题路径，再读取选中的旧笔记并合并摘要与知识细节。
+每篇强制包含 `## 摘要` 与 `## 知识细节`；缺少章节时重试一次，仍不合格则本轮不写入。
 长资料按 24,000 字符逐块处理，不截掉尾部；规划目录清单与选中旧笔记有上下文上限，超限时明确报错。
 没有固定的领域树，也不会自动删除或移动已有笔记。手工建目录与移动文件后，后续规划读取最新结构。
 选择当前文件摄入可以主动重新整理；文件夹批次会跳过内容没有变化的资料。
@@ -40,6 +72,8 @@ PDF、图片和 Office 文件继续走原插件的文档转换后端；MinerU To
 ## 实现位置
 
 - `src/wiki/hierarchical-notes.ts`：主题规划、合并笔记、原转换器调用、备份和简洁目录。
+- `src/wiki/web-sources.ts`：网页链接提取、Tavily 正文提取、LLM 内容判断和资源边界。
+- `src/core/source-formats.ts`：手动摄入入口与引擎共用的格式列表。
 - `src/wiki/wiki-engine.ts`：原摄入入口和对话保存的分流、历史日志、取消处理。
 - `src/main-commands/command-registry.ts`：打开目录命令、文件结构变化后重建目录。
 - `src/schema/auto-maintain.ts`：层级模式启动时更新目录，不按旧分类修复。

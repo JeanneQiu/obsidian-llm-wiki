@@ -26,7 +26,8 @@ import { getText } from '../core/i18n';
 import { slugify } from '../core/slug';
 import { pageBelongsToNote } from '../core/ingest-state';
 import { isIngestableSource } from '../core/folder-scope';
-import { COMPATIBLE_SOURCE_EXTENSIONS, NOTICE_NORMAL, NOTICE_ERROR } from '../constants';
+import { NOTICE_NORMAL, NOTICE_ERROR } from '../constants';
+import { getSourceExtensions } from '../core/source-formats';
 import { FileSuggestModal, FolderSuggestModal, MultiFileSuggestModal, IngestReportModal } from '../ui/modals';
 import { ProgressScope } from '../core/progress-notification';
 
@@ -99,7 +100,7 @@ export const ingestCommands = {
         new Notice(TEXTS[this.settings.language].errorIngestFailed + errMsg, NOTICE_ERROR);
         this.dismissProgress();
       });
-    }).open();
+    }, this.settings).open();
   },
 
   ingestActiveFile(this: IngestHost): void {
@@ -133,7 +134,7 @@ export const ingestCommands = {
     }
 
     new FolderSuggestModal(this.app, this.settings.wikiFolder, (folder) => {
-      const allowedExts: readonly string[] = COMPATIBLE_SOURCE_EXTENSIONS;
+      const allowedExts = getSourceExtensions(this.settings);
       // v1.25.10 PATCH Issue #364 (consolidated with DocTpoint PR #370):
       // scope on the folder boundary, not on a bare string prefix. The
       // helper enforces a path-separator boundary and treats the vault

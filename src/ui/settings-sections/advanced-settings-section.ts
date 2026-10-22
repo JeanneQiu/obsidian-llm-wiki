@@ -36,6 +36,7 @@ import { Notice, Setting } from 'obsidian';
 import type { LLMWikiSettingTab } from '../settings';
 import { MIN_ALIAS_LENGTH, MIN_ALIAS_LENGTH_MIN, MIN_ALIAS_LENGTH_MAX, NOTICE_SHORT } from '../../constants';
 import { renderNumberInput } from './shared-inputs';
+import { TAVILY_SECRET_ID } from '../../wiki/web-sources';
 
 export function renderAdvancedSettingsSection(tab: LLMWikiSettingTab, containerEl: HTMLElement): void {
   const { tempSettings } = tab;
@@ -49,6 +50,19 @@ export function renderAdvancedSettingsSection(tab: LLMWikiSettingTab, containerE
     .addToggle(toggle => toggle.setValue(tempSettings.hierarchicalNotes === true).onChange(value => { tempSettings.hierarchicalNotes = value; }));
 
   // Show advanced settings toggle
+  new Setting(containerEl)
+    .setName(tempSettings.language === 'zh' ? '摄入链接网页正文（Tavily）' : 'Extract linked webpages (Tavily)')
+    .setDesc(tempSettings.language === 'zh' ? '层级模式下读取资料中的公开网页，由模型判断是否保留全文。每份最多 20 个链接；音视频请粘贴文字稿。' : 'In hierarchical mode, extract public links and assess their content. Up to 20 links per source. Paste transcripts for audio/video.')
+    .addToggle(toggle => toggle.setValue(tempSettings.tavilyExtractEnabled === true).onChange(value => { tempSettings.tavilyExtractEnabled = value; }));
+  new Setting(containerEl)
+    .setName('Tavily API key')
+    .setDesc(tempSettings.language === 'zh' ? '仅保存到 Obsidian 密钥存储。' : 'Stored only in Obsidian SecretStorage.')
+    .addText(text => {
+      text.inputEl.type = 'password';
+      text.setValue(tab.app.secretStorage.getSecret(TAVILY_SECRET_ID) ?? '')
+        .onChange(value => { tab.app.secretStorage.setSecret(TAVILY_SECRET_ID, value.trim()); });
+    });
+
   new Setting(containerEl)
     .setName(tab.getText('showAdvancedSettingsName'))
     .setDesc(tab.getText('showAdvancedSettingsDesc'))

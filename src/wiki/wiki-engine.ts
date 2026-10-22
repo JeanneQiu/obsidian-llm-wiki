@@ -82,6 +82,7 @@ import { IndexGenerator } from './engine-internals/index-generator';
 import { LogWriter } from './engine-internals/log-writer';
 import { dedupPages, recordUpdatedPage } from './engine-internals/dedup-pages';
 import { localDateStamp } from '../core/format';
+import { HierarchicalNotes } from './hierarchical-notes';
 
 /**
  * Issue #173 Symptom B: drop exact-string duplicates from a page-path list
@@ -942,6 +943,7 @@ export class WikiEngine {
   }
 
   async ingestSource(file: TFile, opts?: IngestOptions) {
+    if (this.settings.hierarchicalNotes && this.isIngesting()) throw new Error('已有摄入任务正在运行');
     console.debug('=== Ingestion started ===');
     console.debug('Source file:', file.path);
     if (opts?.contentOverride !== undefined) {
@@ -975,6 +977,29 @@ export class WikiEngine {
       this.wasCancelled = false;
       this.abortController = new AbortController();
       this.onIngestionStart?.(file.basename);
+    }
+
+    if (this.settings.hierarchicalNotes) {
+      try {
+        const report = await new HierarchicalNotes(this.ctx).ingest(file, opts);
+        this.invalidatePageCaches();
+        if (!report.skipped) {
+          await this.updateLog('ingest', {source_file: file.path, source_title: file.basename,
+            summary: '', entities: [], concepts: [], related_pages: [], key_points: [],
+            created_pages: report.createdPages, updated_pages: report.updatedPages}, [], {model: this.settings.model});
+          await this.generateIndexFromEngine();
+        }
+        this.onDone?.(report);
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          this.wasCancelled = true;
+          this.onDone?.({sourceFile: file.path, createdPages: [], updatedPages: [], entitiesCreated: 0,
+            conceptsCreated: 0, failedItems: [], contradictionsFound: 0, success: false, cancelled: true, trigger: opts?.trigger});
+        } else throw error;
+      } finally {
+        this.endIngestion();
+      }
+      return;
     }
 
     // v1.25.0 PR2 redo + Altitude #1/#2 (v1.27.0 MINOR #404 follow-up):
@@ -1666,6 +1691,11 @@ export class WikiEngine {
   }
 
   async ensureWikiStructure() {
+    if (this.settings.hierarchicalNotes) {
+      const folder = normalizePath(this.settings.wikiFolder);
+      if (!this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder);
+      return;
+    }
     const folders = [
       normalizePath(this.settings.wikiFolder),
       normalizePath(`${this.settings.wikiFolder}/entities`),
@@ -2262,6 +2292,24 @@ export class WikiEngine {
   // ---- Conversation ingestion delegation ----
 
   async ingestConversation(history: ConversationHistory): Promise<IngestReport> {
+    if (this.settings.hierarchicalNotes) {
+      if (this.isIngesting()) throw new Error('已有摄入任务正在运行');
+      this.abortController = new AbortController();
+      this.onIngestionStart?.('对话学习记录');
+      try {
+        const hierarchy = new HierarchicalNotes(this.ctx);
+        const source = await hierarchy.saveConversationSource(formatConversation(history));
+        const report = await hierarchy.ingest(source, {interactive: true});
+        this.invalidatePageCaches();
+        await this.updateLog('ingest', {source_file: source.path, source_title: source.basename,
+          summary: '', entities: [], concepts: [], related_pages: [], key_points: [],
+          created_pages: report.createdPages, updated_pages: report.updatedPages}, []);
+        await this.generateIndexFromEngine();
+        return report;
+      } finally {
+        this.endIngestion();
+      }
+    }
     return this.conversationIngestor.ingestConversation(history);
   }
 
@@ -2275,6 +2323,10 @@ export class WikiEngine {
   // conversation-ingest orchestrator, main.ts command) see no change.
 
   async generateIndexFromEngine() {
+    if (this.settings.hierarchicalNotes) {
+      await new HierarchicalNotes(this.ctx).rebuildIndexes();
+      return;
+    }
     await this.ensureWikiStructure();
 
     // v1.25.1 Phase C-PR1.8 (Efficiency #2): one getMarkdownFiles() call

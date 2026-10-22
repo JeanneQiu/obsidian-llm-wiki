@@ -95,11 +95,11 @@ ${retrievalNote}
 
 Instructions:
 - Answer based on the Wiki pages above (not general knowledge)
-- Use ONLY Obsidian's wiki-link syntax: [[${wf}/entities/page-name]] (NOT HTML links)
-- Link format MUST include wiki folder: [[${wf}/entities/page-name]]
+- Use ONLY Obsidian's wiki-link syntax with the actual retrieved page path: [[${wf}/topic/page-name]] (NOT HTML links)
+- Link format MUST include wiki folder and preserve all subdirectories of that page: [[${wf}/topic/page-name]]
 
 CRITICAL RULES:
-✅ CORRECT: [[${wf}/entities/example-page]], [[${wf}/concepts/example-concept]]
+✅ CORRECT: [[${wf}/topic/example-page]], [[${wf}/topic/subtopic/example-note]]
 ❌ WRONG: <a href="...">, [link text](url), [[example-page]], [[entities/example-page]]
 - Obsidian wiki-links use DOUBLE brackets: [[path]]
 - NO HTML: Never use <a href="...">text</a>
@@ -112,8 +112,8 @@ CITATION REQUIREMENTS:
 - Format each reference as: [[${wf}/path/page-name|Display Name]] — brief description
 - Example:
   ## References
-  1. [[${wf}/concepts/example-concept|Example Concept]] — Core mechanism explanation
-  2. [[${wf}/entities/example-entity|Example Entity]] — Background and history
+  1. [[${wf}/topic/example-note|Example Note]] — Core mechanism explanation
+  2. [[${wf}/topic/subtopic/example-note|Example Note]] — Background and history
 
 If Wiki lacks relevant information:
 - Acknowledge it and suggest ingesting more sources

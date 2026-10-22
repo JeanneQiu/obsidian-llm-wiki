@@ -43,6 +43,11 @@ export function renderAdvancedSettingsSection(tab: LLMWikiSettingTab, containerE
   // Advanced settings heading
   new Setting(containerEl).setName(tab.getText('advancedSettingsSection')).setHeading();
 
+  new Setting(containerEl)
+    .setName(tab.tempSettings.language === 'zh' ? '层级学习笔记模式' : 'Hierarchical study notes')
+    .setDesc(tab.tempSettings.language === 'zh' ? '模型规划主题目录，合并摘要和知识细节。每层 index.md 只列子目录与笔记。保存后重启插件。' : 'Plan topic folders and merge detailed study notes. Each index.md lists direct children only. Reload after saving.')
+    .addToggle(toggle => toggle.setValue(tempSettings.hierarchicalNotes === true).onChange(value => { tempSettings.hierarchicalNotes = value; }));
+
   // Show advanced settings toggle
   new Setting(containerEl)
     .setName(tab.getText('showAdvancedSettingsName'))

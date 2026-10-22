@@ -353,6 +353,15 @@ export class AutoMaintainManager {
   // All operations are read-only unless a file actually needs fixing.
 
   async runStartupCheck(): Promise<void> {
+    // Hierarchical notes do not use the entity/concept repair contract.
+    if (this.settings.hierarchicalNotes) {
+      this.app.workspace.onLayoutReady(() => {
+        void this.wikiEngine.generateIndexFromEngine().catch(error => {
+          new Notice(error instanceof Error ? error.message : String(error));
+        });
+      });
+      return;
+    }
     // Wait for vault to settle after startup
     await new Promise(resolve => window.setTimeout(resolve, 3000));
 

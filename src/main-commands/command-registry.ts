@@ -12,7 +12,7 @@
  */
 
 import { Notice } from 'obsidian';
-import type { Plugin } from 'obsidian';
+import type { Plugin, TAbstractFile } from 'obsidian';
 import type { AutoMaintainManager } from '../schema/auto-maintain';
 import type { BatchProgress } from '../core/status-bar';
 import type { IngestQueue } from '../core/ingest-queue';
@@ -27,6 +27,7 @@ export interface CommandRegistryHost extends Plugin {
   settings: {
     language: string;
     wikiFolder?: string;
+    hierarchicalNotes?: boolean;
   };
   wikiEngine: import('../wiki/wiki-engine').WikiEngine;
   autoMaintainManager: AutoMaintainManager;
@@ -46,10 +47,48 @@ export interface CommandRegistryHost extends Plugin {
 export function registerWikiCommands(plugin: CommandRegistryHost): void {
   const t = (TEXTS as unknown as Record<string, Record<string, string>>)[plugin.settings.language];
 
+  let directoryTimer: number | undefined;
+  let directoryRunning = false;
+  let directoryDisposed = false;
+  const rebuildLater = (): void => {
+    window.clearTimeout(directoryTimer);
+    directoryTimer = window.setTimeout(() => {
+      if (directoryDisposed) return;
+      if (plugin.wikiEngine.isIngesting() || directoryRunning) { rebuildLater(); return; }
+      directoryRunning = true;
+      void plugin.wikiEngine.generateIndexFromEngine().catch(error => {
+        new Notice(error instanceof Error ? error.message : String(error));
+      }).finally(() => { directoryRunning = false; });
+    }, 1200);
+  };
+  const scheduleDirectory = (file: TAbstractFile, oldPath?: string): void => {
+    const prefix = `${plugin.settings.wikiFolder || 'wiki'}/`;
+    if (!plugin.settings.hierarchicalNotes || (!file.path.startsWith(prefix) && !oldPath?.startsWith(prefix)) || file.path.includes('/.jeans-wiki/')) return;
+    rebuildLater();
+  };
+  plugin.registerEvent(plugin.app.vault.on('create', file => {if (file.name !== 'index.md') scheduleDirectory(file);}));
+  plugin.registerEvent(plugin.app.vault.on('delete', scheduleDirectory));
+  plugin.registerEvent(plugin.app.vault.on('rename', scheduleDirectory));
+  plugin.register(() => {directoryDisposed = true; window.clearTimeout(directoryTimer);});
+
   plugin.addCommand({
     id: 'ingest-source',
     name: t.cmdIngestSource,
     callback: () => plugin.selectSourceToIngest()
+  });
+
+  plugin.addCommand({
+    id: 'open-hierarchical-index',
+    name: plugin.settings.language === 'zh' ? '打开层级知识目录' : 'Open hierarchical directory',
+    callback: () => {
+      void (async () => {
+        try {
+          if (plugin.wikiEngine.isIngesting()) throw new Error('请等待当前整理任务完成');
+          await plugin.wikiEngine.generateIndexFromEngine();
+          await plugin.app.workspace.openLinkText(`${plugin.settings.wikiFolder || 'wiki'}/index.md`, '', false);
+        } catch (error) { new Notice(error instanceof Error ? error.message : String(error)); }
+      })();
+    }
   });
 
   plugin.addCommand({

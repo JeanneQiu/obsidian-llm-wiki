@@ -574,6 +574,9 @@ export class LLMWikiSettingTab extends PluginSettingTab {
    */
   public isWikiInitialized(): boolean {
     const wikiFolder = this.tempSettings.wikiFolder || 'wiki';
+    if (this.tempSettings.hierarchicalNotes) {
+      return !!this.app.vault.getAbstractFileByPath(`${wikiFolder}/index.md`);
+    }
     return !!(
       this.app.vault.getAbstractFileByPath(`${wikiFolder}/entities`) &&
       this.app.vault.getAbstractFileByPath(`${wikiFolder}/concepts`) &&

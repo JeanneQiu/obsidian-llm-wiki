@@ -257,6 +257,8 @@ export interface OpenAICodexModelCatalogEntry {
 }
 
 export interface LLMWikiSettings {
+  /** Local opt-in: organize source material as hierarchical study notes. */
+  hierarchicalNotes?: boolean;
   provider: string;
   apiKey: string;
   openAICodexSecretId: string;

@@ -78,6 +78,7 @@ function isIndexableWikiPath(path: string, wikiFolder: string): boolean {
     !path.includes('index.md') &&
     !path.includes('log.md') &&
     !path.includes('/schema/') &&
+    !path.includes('/.jeans-wiki/') &&
     !path.includes('/contradictions/')
   );
 }
